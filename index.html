@@ -304,6 +304,8 @@
 
       <p id="statusNotice" class="status-notice"></p>
 
+      <p id="studentFirstName" class="detail"><strong>First Name:</strong> —</p>
+      <p id="studentLastName" class="detail"><strong>Last Name:</strong> —</p>
       <p id="studentBirthdate" class="detail"><strong>Birthdate:</strong> —</p>
       <p id="studentPhone" class="detail"><strong>Phone:</strong> —</p>
       <p id="studentEmail" class="detail"><strong>Email:</strong> —</p>
@@ -325,7 +327,7 @@
     // (ends in /exec). Deploy > New deployment > Web app,
     // Execute as: Me, Who has access: Anyone.
     // =====================================================
-    const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwKmeP0K3vnMEl43D5aUcCp6YFt5vnO5qdl0I8wsU1RkKYAsPdk2GPmaXCavZ2lrUlF/exec";
+    const WEB_APP_URL = "PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE";
 
     // Sends a POST request to the backend. Uses text/plain as
     // the content type (instead of application/json) so the
@@ -640,7 +642,9 @@
       }
 
       document.getElementById("studentPhoto").src = currentStudent.photo || "https://via.placeholder.com/90";
-      document.getElementById("studentName").textContent = currentStudent.name;
+      document.getElementById("studentName").textContent = currentStudent.firstName + " " + currentStudent.lastName;
+      document.getElementById("studentFirstName").innerHTML = "<strong>First Name:</strong> " + currentStudent.firstName;
+      document.getElementById("studentLastName").innerHTML = "<strong>Last Name:</strong> " + currentStudent.lastName;
       document.getElementById("studentBirthdate").innerHTML = "<strong>Birthdate:</strong> " + currentStudent.birthdate;
       document.getElementById("studentPhone").innerHTML = "<strong>Phone:</strong> " + currentStudent.phone;
       document.getElementById("studentEmail").innerHTML = "<strong>Email:</strong> " + currentStudent.email;
@@ -692,6 +696,8 @@
 
       document.getElementById("studentPhoto").src = "https://via.placeholder.com/90";
       document.getElementById("studentName").textContent = "Unknown QR Code";
+      document.getElementById("studentFirstName").innerHTML = "<strong>First Name:</strong> —";
+      document.getElementById("studentLastName").innerHTML = "<strong>Last Name:</strong> —";
       document.getElementById("studentBirthdate").innerHTML = "<strong>Birthdate:</strong> —";
       document.getElementById("studentPhone").innerHTML = "<strong>Phone:</strong> —";
       document.getElementById("studentEmail").innerHTML = "<strong>Email:</strong> —";
@@ -760,10 +766,12 @@
         return;
       }
 
+      const studentFullName = currentStudent.firstName + " " + currentStudent.lastName;
+
       showToast(
         currentMode === "in"
-          ? "Logged IN: " + currentStudent.name
-          : "Logged OUT: " + currentStudent.name
+          ? "Logged IN: " + studentFullName
+          : "Logged OUT: " + studentFullName
       );
 
       closeModal();
