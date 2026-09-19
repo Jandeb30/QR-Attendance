@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QR Attendance</title>
+
+  <!-- QR SCANNER LIBRARY -->
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: #f4f6f8;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 500px;
+      background: white;
+      padding: 20px;
+      border-radius: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+    }
+
+    h1 {
+      text-align: center;
+      margin: 0 0 5px;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #777;
+      margin-bottom: 20px;
+    }
+
+    #reader {
+      width: 100%;
+      overflow: hidden;
+      border-radius: 15px;
+    }
+
+    #status {
+      text-align: center;
+      color: #666;
+      margin-top: 15px;
+      min-height: 20px;
+    }
+
+    #status.error {
+      color: #d32f2f;
+      font-weight: bold;
+    }
+
+    #startButton {
+      display: block;
+      width: 100%;
+      border: none;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      background: #111;
+      color: white;
+      margin-bottom: 15px;
+    }
+
+    #startButton:disabled {
+      background: #999;
+      cursor: default;
+    }
+
+    #stopButton {
+      display: block;
+      width: 100%;
+      border: none;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      background: #d32f2f;
+      color: white;
+      margin-bottom: 15px;
+    }
+
+    .mode-toggle {
+      display: none;
+      gap: 10px;
+      margin-bottom: 15px;
+    }
+
+    .mode-btn {
+      flex: 1;
+      border: none;
+      border-radius: 12px;
+      padding: 13px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      background: #eee;
+      color: #555;
+    }
+
+    #modeInButton.active {
+      background: #2e7d32;
+      color: white;
+    }
+
+    #modeOutButton.active {
+      background: #d32f2f;
+      color: white;
+    }
+
+    .help-box {
+      display: none;
+      background: #fff3f3;
+      border: 1px solid #f5c2c2;
+      color: #a11;
+      padding: 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      margin-top: 12px;
+      line-height: 1.5;
+    }
+
+    .help-box.show {
+      display: block;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #111;
+      color: white;
+      padding: 12px 22px;
+      border-radius: 10px;
+      font-size: 14px;
+      max-width: 90%;
+      text-align: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+      z-index: 2000;
+    }
+
+    .toast.show {
+      opacity: 1;
+    }
+
+    /* MODAL */
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      z-index: 1000;
+    }
+
+    .modal-overlay.show {
+      display: flex;
+    }
+
+    .modal {
+      width: 100%;
+      max-width: 380px;
+      background: white;
+      border-radius: 20px;
+      padding: 25px;
+      text-align: center;
+    }
+
+    .student-photo {
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #eee;
+      margin-bottom: 15px;
+    }
+
+    .modal h2 {
+      margin: 0 0 5px;
+    }
+
+    .detail {
+      color: #666;
+      font-size: 14px;
+      margin: 0 0 6px;
+    }
+
+    .detail strong {
+      color: #333;
+    }
+
+    .status-notice {
+      display: none;
+      background: #eef2f7;
+      color: #333;
+      font-weight: 600;
+      font-size: 13px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      margin: 0 0 12px;
+    }
+
+    .qr-value {
+      background: #f4f4f4;
+      padding: 10px;
+      border-radius: 10px;
+      font-size: 12px;
+      word-break: break-all;
+      margin-bottom: 20px;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    button {
+      flex: 1;
+      border: none;
+      border-radius: 12px;
+      padding: 13px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #ddd !important;
+      color: #999 !important;
+      cursor: not-allowed;
+    }
+
+    .login {
+      background: #2e7d32;
+      color: white;
+    }
+
+    .logout {
+      background: #d32f2f;
+      color: white;
+    }
+
+    .cancel-full {
+      width: 100%;
+      background: #eee;
+      color: #333;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>QR Attendance</h1>
+    <p class="subtitle">Scan student's QR code</p>
+
+    <button id="startButton" onclick="startScanner()">Start Camera</button>
+    <button id="stopButton" onclick="stopScanner()" style="display: none;">Stop Scanning</button>
+
+    <div id="modeToggle" class="mode-toggle">
+      <button id="modeInButton" class="mode-btn active" onclick="setMode('in')">LOG IN MODE</button>
+      <button id="modeOutButton" class="mode-btn" onclick="setMode('out')">LOG OUT MODE</button>
+    </div>
+
+    <div id="reader"></div>
+
+    <p id="status">Tap "Start Camera" to begin</p>
+
+    <div id="helpBox" class="help-box">
+      Camera permission was denied. To fix this:
+      <br>1. Make sure this page is loaded over <strong>https://</strong> (or localhost) — camera access is blocked on plain http and on file:// pages.
+      <br>2. Check your browser's site settings (click the lock/camera icon in the address bar) and allow camera access for this site.
+      <br>3. On iPhone/iPad: Settings &rarr; Safari &rarr; Camera, or Settings &rarr; [Browser name] &rarr; Camera.
+      <br>4. Reload the page after changing the permission and tap "Start Camera" again.
+    </div>
+  </div>
+
+  <!-- STUDENT MODAL -->
+  <div id="studentModal" class="modal-overlay">
+    <div class="modal">
+      <img id="studentPhoto" class="student-photo" src="https://via.placeholder.com/90" alt="Student">
+      <h2 id="studentName">Student Name</h2>
+
+      <p id="statusNotice" class="status-notice"></p>
+
+      <p id="studentBirthdate" class="detail"><strong>Birthdate:</strong> —</p>
+      <p id="studentPhone" class="detail"><strong>Phone:</strong> —</p>
+      <p id="studentEmail" class="detail"><strong>Email:</strong> —</p>
+      <p id="studentGender" class="detail"><strong>Gender:</strong> —</p>
+      <div id="qrValue" class="qr-value">QR Value</div>
+
+      <div id="actionButtons" class="action-buttons">
+        <button id="actionButton" class="login" onclick="recordAttendance()">LOG IN</button>
+      </div>
+
+      <button class="cancel-full" onclick="closeModal()">CANCEL</button>
+    </div>
+  </div>
+
+  <script>
+    // =====================================================
+    // BACKEND CONFIG
+    // Paste your deployed Apps Script Web App URL here
+    // (ends in /exec). Deploy > New deployment > Web app,
+    // Execute as: Me, Who has access: Anyone.
+    // =====================================================
+    const WEB_APP_URL = "PASTE_YOUR_DEPLOYED_WEB_APP_URL_HERE";
+
+    // Sends a POST request to the backend. Uses text/plain as
+    // the content type (instead of application/json) so the
+    // browser treats it as a "simple request" and skips the
+    // CORS preflight, which Apps Script Web Apps don't handle.
+    async function callBackend(payload) {
+      const response = await fetch(WEB_APP_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error("Server responded with " + response.status);
+      }
+
+      return response.json();
+    }
+
+    // =====================================================
+    // STATE
+    // =====================================================
+    let currentStudent = null;
+    let currentQrValue = null;
+    let currentMode = "in"; // "in" or "out" — set via the mode toggle
+    let scannerLocked = false;
+    let scanner = null;
+    let scannerRunning = false;
+
+    // =====================================================
+    // STATUS HELPER
+    // =====================================================
+    function setStatus(text, isError) {
+      const statusEl = document.getElementById("status");
+      statusEl.textContent = text;
+      statusEl.classList.toggle("error", !!isError);
+    }
+
+    let toastTimeout = null;
+
+    function showToast(message, duration = 2500) {
+      const toast = document.getElementById("toast");
+      toast.textContent = message;
+      toast.classList.add("show");
+
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.remove("show");
+      }, duration);
+    }
+
+    // =====================================================
+    // MODE TOGGLE (Log In / Log Out)
+    // Shown once the camera is running. Every scan after
+    // picking a mode performs that single action.
+    // =====================================================
+    function setMode(mode) {
+      currentMode = mode;
+
+      document.getElementById("modeInButton").classList.toggle("active", mode === "in");
+      document.getElementById("modeOutButton").classList.toggle("active", mode === "out");
+
+      if (scannerRunning) {
+        setStatus(
+          mode === "in"
+            ? "Log In mode — scan a student to log them in"
+            : "Log Out mode — scan a student to log them out"
+        );
+      }
+    }
+
+    // =====================================================
+    // BEEP SOUNDS
+    // Generated with the Web Audio API so no audio files are
+    // needed. The AudioContext is created/unlocked from the
+    // Start Camera tap (a user gesture) so beeps can then play
+    // reliably during scanning, including on mobile Safari.
+    // =====================================================
+    let audioCtx = null;
+
+    function getAudioContext() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === "suspended") {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    function playTone(frequency, duration, delay = 0) {
+      try {
+        const ctx = getAudioContext();
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        oscillator.type = "sine";
+        oscillator.frequency.value = frequency;
+
+        gain.gain.value = 0.15;
+
+        oscillator.connect(gain);
+        gain.connect(ctx.destination);
+
+        const startTime = ctx.currentTime + delay;
+        oscillator.start(startTime);
+        oscillator.stop(startTime + duration);
+      } catch (error) {
+        console.error("Error playing beep:", error);
+      }
+    }
+
+    function playSuccessBeep() {
+      playTone(880, 0.10, 0);
+      playTone(1320, 0.18, 0.12);
+    }
+
+    function playErrorBeep() {
+      playTone(350, 0.12, 0);
+      playTone(350, 0.12, 0.18);
+    }
+
+    function playDuplicateBeep() {
+      playTone(600, 0.08, 0);
+      playTone(600, 0.08, 0.12);
+      playTone(600, 0.08, 0.24);
+    }
+
+    // =====================================================
+    // START SCANNER
+    // Triggered by a tap (not on page load) so the permission
+    // prompt reliably appears, especially on iOS Safari.
+    // =====================================================
+    async function startScanner() {
+      if (scannerRunning) return;
+
+      const startButton = document.getElementById("startButton");
+      document.getElementById("helpBox").classList.remove("show");
+
+      if (!window.isSecureContext) {
+        setStatus("This page must be loaded over HTTPS (or localhost) for the camera to work.", true);
+        document.getElementById("helpBox").classList.add("show");
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setStatus("This browser does not support camera access.", true);
+        return;
+      }
+
+      startButton.disabled = true;
+      setStatus("Requesting camera access...");
+
+      getAudioContext();
+
+      try {
+        if (!scanner) {
+          scanner = new Html5Qrcode("reader");
+        }
+
+        await scanner.start(
+          { facingMode: "environment" },
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          onScanSuccess,
+          onScanFailure
+        );
+
+        scannerRunning = true;
+        startButton.style.display = "none";
+        document.getElementById("stopButton").style.display = "block";
+        document.getElementById("modeToggle").style.display = "flex";
+
+        setMode(currentMode);
+      } catch (error) {
+        handleCameraError(error, startButton);
+      }
+    }
+
+    // =====================================================
+    // STOP SCANNER
+    // =====================================================
+    async function stopScanner() {
+      if (!scanner || !scannerRunning) return;
+
+      const startButton = document.getElementById("startButton");
+      const stopButton = document.getElementById("stopButton");
+
+      try {
+        await scanner.stop();
+        scanner.clear();
+      } catch (error) {
+        console.error("Error stopping scanner:", error);
+      }
+
+      scannerRunning = false;
+      scannerLocked = false;
+
+      stopButton.style.display = "none";
+      startButton.style.display = "block";
+      startButton.disabled = false;
+      document.getElementById("modeToggle").style.display = "none";
+
+      setStatus("Camera stopped. Tap \"Start Camera\" to resume.");
+    }
+
+    // =====================================================
+    // CAMERA ERROR HANDLING
+    // =====================================================
+    function handleCameraError(error, startButton) {
+      console.error("Raw camera error:", error);
+      startButton.disabled = false;
+
+      const errorName = (error && error.name) || (typeof error === "string" ? error : "") || "";
+      const errorMessage =
+        (error && error.message) ||
+        (typeof error === "string" ? error : "") ||
+        (error ? JSON.stringify(error) : "No further details provided");
+
+      if (errorName === "NotAllowedError" || /permission/i.test(errorMessage)) {
+        setStatus("Camera permission denied.", true);
+        document.getElementById("helpBox").classList.add("show");
+      } else if (errorName === "NotFoundError" || /not found|no camera/i.test(errorMessage)) {
+        setStatus("No camera was found on this device.", true);
+      } else if (errorName === "NotReadableError" || /in use|could not start/i.test(errorMessage)) {
+        setStatus("Camera is already in use by another app.", true);
+      } else if (errorName === "OverconstrainedError") {
+        setStatus("No camera on this device matches the requested settings (rear/environment camera).", true);
+      } else {
+        setStatus("Camera error: " + (errorName ? errorName + " — " : "") + errorMessage, true);
+      }
+    }
+
+    // =====================================================
+    // QR SCAN CALLBACKS
+    // =====================================================
+    function onScanSuccess(decodedText) {
+      if (scannerLocked) return;
+      scannerLocked = true;
+
+      if (scanner && scannerRunning) {
+        try {
+          scanner.pause(true);
+        } catch (error) {
+          console.error("Error pausing scanner:", error);
+        }
+      }
+
+      console.log("QR scanned:", decodedText);
+      processQRCode(decodedText);
+    }
+
+    function onScanFailure() {
+      // Runs continuously while no QR code is in view — ignore.
+    }
+
+    // Resumes scanning without opening the modal — used when a
+    // backend call fails outright (network error, bad response).
+    function resumeScanningAfterError() {
+      if (scanner && scannerRunning) {
+        try {
+          scanner.resume();
+        } catch (error) {
+          console.error("Error resuming scanner:", error);
+        }
+      }
+
+      setTimeout(() => {
+        scannerLocked = false;
+      }, 500);
+    }
+
+    // =====================================================
+    // PROCESS QR — looks the student up on the backend
+    // =====================================================
+    async function processQRCode(qrValue) {
+      setStatus("Looking up student...");
+
+      let data;
+
+      try {
+        data = await callBackend({ action: "lookup", qrValue: qrValue });
+      } catch (error) {
+        console.error("Lookup failed:", error);
+        showToast("Network error — could not reach the server.");
+        setStatus("Network error. Scan again to retry.", true);
+        resumeScanningAfterError();
+        return;
+      }
+
+      if (!data.ok) {
+        showToast(data.error || "Something went wrong.");
+        setStatus(data.error || "Something went wrong.", true);
+        resumeScanningAfterError();
+        return;
+      }
+
+      if (!data.found) {
+        showUnknownStudent(qrValue);
+        return;
+      }
+
+      currentStudent = data.student;
+      currentQrValue = qrValue;
+
+      const record = { timeIn: data.timeIn, timeOut: data.timeOut };
+      const actionAvailable = currentMode === "in" ? !record.timeIn : record.timeIn && !record.timeOut;
+
+      if (actionAvailable) {
+        playSuccessBeep();
+      } else {
+        playDuplicateBeep();
+      }
+
+      document.getElementById("studentPhoto").src = currentStudent.photo || "https://via.placeholder.com/90";
+      document.getElementById("studentName").textContent = currentStudent.name;
+      document.getElementById("studentBirthdate").innerHTML = "<strong>Birthdate:</strong> " + currentStudent.birthdate;
+      document.getElementById("studentPhone").innerHTML = "<strong>Phone:</strong> " + currentStudent.phone;
+      document.getElementById("studentEmail").innerHTML = "<strong>Email:</strong> " + currentStudent.email;
+      document.getElementById("studentGender").innerHTML = "<strong>Gender:</strong> " + currentStudent.gender;
+      document.getElementById("qrValue").textContent = "QR: " + qrValue;
+
+      document.getElementById("actionButtons").style.display = "flex";
+      updateStatusNotice(record);
+      updateActionButton(record);
+
+      document.getElementById("studentModal").classList.add("show");
+
+      setStatus("Student identified");
+    }
+
+    function updateStatusNotice(record) {
+      const notice = document.getElementById("statusNotice");
+
+      if (!record.timeIn) {
+        notice.textContent = "Not yet logged in today.";
+      } else if (record.timeIn && !record.timeOut) {
+        notice.textContent = "Logged in at " + record.timeIn + " — not yet logged out.";
+      } else {
+        notice.textContent = "Logged in at " + record.timeIn + " · Logged out at " + record.timeOut;
+      }
+
+      notice.style.display = "block";
+    }
+
+    function updateActionButton(record) {
+      const button = document.getElementById("actionButton");
+
+      if (currentMode === "in") {
+        button.textContent = "LOG IN";
+        button.className = "login";
+        button.disabled = !!record.timeIn;
+      } else {
+        button.textContent = "LOG OUT";
+        button.className = "logout";
+        button.disabled = !record.timeIn || !!record.timeOut;
+      }
+    }
+
+    function showUnknownStudent(qrValue) {
+      currentStudent = null;
+      currentQrValue = null;
+
+      playErrorBeep();
+
+      document.getElementById("studentPhoto").src = "https://via.placeholder.com/90";
+      document.getElementById("studentName").textContent = "Unknown QR Code";
+      document.getElementById("studentBirthdate").innerHTML = "<strong>Birthdate:</strong> —";
+      document.getElementById("studentPhone").innerHTML = "<strong>Phone:</strong> —";
+      document.getElementById("studentEmail").innerHTML = "<strong>Email:</strong> —";
+      document.getElementById("studentGender").innerHTML = "<strong>Gender:</strong> —";
+      document.getElementById("qrValue").textContent = "QR: " + qrValue;
+
+      document.getElementById("statusNotice").style.display = "none";
+      document.getElementById("actionButtons").style.display = "none";
+      document.getElementById("studentModal").classList.add("show");
+
+      setStatus("Unknown QR code");
+    }
+
+    // =====================================================
+    // MODAL CONTROLS
+    // =====================================================
+    function closeModal() {
+      document.getElementById("studentModal").classList.remove("show");
+      currentStudent = null;
+      currentQrValue = null;
+
+      if (scanner && scannerRunning) {
+        try {
+          scanner.resume();
+        } catch (error) {
+          console.error("Error resuming scanner:", error);
+        }
+      }
+
+      setTimeout(() => {
+        scannerLocked = false;
+      }, 500);
+
+      setStatus(
+        currentMode === "in"
+          ? "Log In mode — scan a student to log them in"
+          : "Log Out mode — scan a student to log them out"
+      );
+    }
+
+    // =====================================================
+    // RECORD ATTENDANCE (uses the currently selected mode)
+    // =====================================================
+    async function recordAttendance() {
+      if (!currentStudent || !currentQrValue) return;
+
+      const button = document.getElementById("actionButton");
+      button.disabled = true;
+
+      const action = currentMode === "in" ? "timeIn" : "timeOut";
+
+      let data;
+
+      try {
+        data = await callBackend({ action: action, qrValue: currentQrValue });
+      } catch (error) {
+        console.error("Record attendance failed:", error);
+        showToast("Network error — please try again.");
+        button.disabled = false;
+        return;
+      }
+
+      if (!data.ok) {
+        showToast(data.error || "Could not record attendance.");
+        button.disabled = false;
+        return;
+      }
+
+      showToast(
+        currentMode === "in"
+          ? "Logged IN: " + currentStudent.name
+          : "Logged OUT: " + currentStudent.name
+      );
+
+      closeModal();
+    }
+  </script>
+
+  <div id="toast" class="toast"></div>
+</body>
+</html>
