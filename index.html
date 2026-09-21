@@ -44,10 +44,33 @@
       margin-bottom: 20px;
     }
 
+    #liveDateTime {
+      text-align: center;
+      color: #555;
+      font-size: 13px;
+      font-weight: 600;
+      margin: 0 0 12px;
+    }
+
     #reader {
+      display: none;
       width: 100%;
+      max-width: 280px;
+      aspect-ratio: 1 / 1;
+      margin: 0 auto 15px;
       overflow: hidden;
       border-radius: 15px;
+    }
+
+    /* html5-qrcode sometimes sizes the video element with a
+       calculated pixel height that doesn't match the container,
+       cutting part of the preview off. Force it to always fill
+       the square container exactly instead. */
+    #reader video {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover;
+      display: block;
     }
 
     #status {
@@ -188,12 +211,13 @@
     }
 
     .student-photo {
-      width: 90px;
-      height: 90px;
+      width: 200px;
+      height: 200px;
       border-radius: 50%;
       object-fit: cover;
       background: #eee;
       margin-bottom: 15px;
+      box-shadow: rgba(0, 0, 0, 0.24) 0px 3px 8px;
     }
 
     .modal h2 {
@@ -267,56 +291,221 @@
       background: #eee;
       color: #333;
     }
+
+    .login-input {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid #ddd;
+      font-size: 15px;
+      margin-bottom: 12px;
+      box-sizing: border-box;
+    }
+
+    .login-error {
+      display: none;
+      color: #d32f2f;
+      font-size: 13px;
+      font-weight: bold;
+      margin: -4px 0 12px;
+    }
+
+    .dashboard-button {
+      width: 100%;
+      background: #1a73e8;
+      color: white;
+      margin-bottom: 15px;
+    }
+
+    .sheet-tabs {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      margin-bottom: 14px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #eee;
+    }
+ 
+    .sheet-tab-btn {
+      flex: none;
+      padding: 8px 16px;
+      border-radius: 20px;
+      border: none;
+      background: #eee;
+      color: #555;
+      font-size: 13px;
+      font-weight: bold;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+ 
+    .sheet-tab-btn.active {
+      background: #1a73e8;
+      color: white;
+    }
+ 
+    .sheet-table-wrapper {
+      width: 100%;
+      max-width: 380px;
+      overflow: auto;
+      border: 1px solid #e2e2e2;
+      border-radius: 10px;
+      max-height: 65vh;
+    }
+ 
+    .sheet-table {
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 8px;
+      width: max-content;
+      min-width: 100%;
+    }
+ 
+    .sheet-table th,
+    .sheet-table td {
+      border-bottom: 1px solid #eee;
+      border-right: 1px solid #eee;
+      padding: 8px 10px;
+      text-align: left;
+      min-width: 60px;
+    }
+ 
+    .sheet-table th {
+      background: #f4f6f8;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      font-size: 10px;
+      color: #555;
+      white-space: nowrap;
+    }
+ 
+    /* Name column: sticky on the left, on both header and body rows.
+       Given its own higher z-index so the top-left corner cell
+       (which is sticky in both directions) always renders above
+       everything else, instead of fighting with the header row. */
+    .sheet-name-cell {
+      position: sticky;
+      left: 0;
+      text-align: left;
+      font-weight: 600;
+      min-width: 130px;
+      background: white;
+      z-index: 3;
+      white-space: nowrap;
+      text-transform: capitalize;
+    }
+ 
+    th.sheet-name-cell {
+      background: #f4f6f8;
+      z-index: 4;
+    }
+ 
+    .sheet-table tr:nth-child(even) td:not(.sheet-name-cell) {
+      background: #fafafa;
+    }
+ 
+    .sheet-absent-cell {
+      background: #f4cccc !important;
+    }
+ 
+    .sheet-open-link {
+      display: block;
+      text-align: center;
+      margin-top: 14px;
+      font-size: 13px;
+      color: #1a73e8;
+      text-decoration: none;
+    }
   </style>
 </head>
 
 <body>
-  <div class="container">
-    <h1>QR Attendance</h1>
-    <p class="subtitle">Scan student's QR code</p>
+  <!-- LOGIN MODAL -->
+  <div id="loginModal" class="modal-overlay">
+    <div class="modal">
+      <h2>Staff Login</h2>
+      <p class="subtitle" style="margin-bottom: 20px;">Sign in to access the attendance scanner</p>
 
-    <button id="startButton" onclick="startScanner()">Start Camera</button>
-    <button id="stopButton" onclick="stopScanner()" style="display: none;">Stop Scanning</button>
+      <input type="text" id="loginUsername" class="login-input" placeholder="Username" autocomplete="username">
+      <input type="password" id="loginPassword" class="login-input" placeholder="Password" autocomplete="current-password" onkeydown="if (event.key === 'Enter') attemptLogin();">
 
-    <div id="modeToggle" class="mode-toggle">
-      <button id="modeInButton" class="mode-btn active" onclick="setMode('in')">LOG IN MODE</button>
-      <button id="modeOutButton" class="mode-btn" onclick="setMode('out')">LOG OUT MODE</button>
-    </div>
+      <p id="loginError" class="login-error"></p>
 
-    <div id="reader"></div>
-
-    <p id="status">Tap "Start Camera" to begin</p>
-
-    <div id="helpBox" class="help-box">
-      Camera permission was denied. To fix this:
-      <br>1. Make sure this page is loaded over <strong>https://</strong> (or localhost) — camera access is blocked on plain http and on file:// pages.
-      <br>2. Check your browser's site settings (click the lock/camera icon in the address bar) and allow camera access for this site.
-      <br>3. On iPhone/iPad: Settings &rarr; Safari &rarr; Camera, or Settings &rarr; [Browser name] &rarr; Camera.
-      <br>4. Reload the page after changing the permission and tap "Start Camera" again.
+      <button id="loginSubmitButton" class="login" style="width: 100%;" onclick="attemptLogin()">LOG IN</button>
     </div>
   </div>
 
-  <!-- STUDENT MODAL -->
-  <div id="studentModal" class="modal-overlay">
-    <div class="modal">
-      <img id="studentPhoto" class="student-photo" src="https://via.placeholder.com/90" alt="Student">
-      <h2 id="studentName">Student Name</h2>
+  <!-- DASHBOARD / APP CONTENT (hidden until logged in) -->
+  <div id="appContent" style="display: none;">
+    <div class="container">
+      <h1>QR Attendance</h1>
+      <p id="liveDateTime"></p>
 
-      <p id="statusNotice" class="status-notice"></p>
+      <div id="scannerView">
+        <p class="subtitle">Scan student's QR code</p>
 
-      <p id="studentFirstName" class="detail"><strong>First Name:</strong> —</p>
-      <p id="studentLastName" class="detail"><strong>Last Name:</strong> —</p>
-      <p id="studentBirthdate" class="detail"><strong>Birthdate:</strong> —</p>
-      <p id="studentPhone" class="detail"><strong>Phone:</strong> —</p>
-      <p id="studentEmail" class="detail"><strong>Email:</strong> —</p>
-      <p id="studentGender" class="detail"><strong>Gender:</strong> —</p>
-      <div id="qrValue" class="qr-value">QR Value</div>
+        <button class="dashboard-button" onclick="openAttendanceSheetViewer()">Open Attendance Sheet</button>
 
-      <div id="actionButtons" class="action-buttons">
-        <button id="actionButton" class="login" onclick="recordAttendance()">LOG IN</button>
+        <button id="startButton" onclick="startScanner()">Start Camera</button>
+        <button id="stopButton" onclick="stopScanner()" style="display: none;">Stop Scanning</button>
+
+        <div id="modeToggle" class="mode-toggle">
+          <button id="modeInButton" class="mode-btn active" onclick="setMode('in')">LOG IN MODE</button>
+          <button id="modeOutButton" class="mode-btn" onclick="setMode('out')">LOG OUT MODE</button>
+        </div>
+
+        <div id="reader"></div>
+
+        <p id="status">Tap "Start Camera" to begin</p>
+
+        <div id="helpBox" class="help-box">
+          Camera permission was denied. To fix this:
+          <br>1. Make sure this page is loaded over <strong>https://</strong> (or localhost) — camera access is blocked on plain http and on file:// pages.
+          <br>2. Check your browser's site settings (click the lock/camera icon in the address bar) and allow camera access for this site.
+          <br>3. On iPhone/iPad: Settings &rarr; Safari &rarr; Camera, or Settings &rarr; [Browser name] &rarr; Camera.
+          <br>4. Reload the page after changing the permission and tap "Start Camera" again.
+        </div>
       </div>
 
-      <button class="cancel-full" onclick="closeModal()">CANCEL</button>
+      <div id="sheetViewerView" style="display: none;">
+        <button class="cancel-full" style="margin-bottom: 12px;" onclick="closeSheetViewer()">← Back to Scanner</button>
+
+        <div id="sheetTabs" class="sheet-tabs"></div>
+
+        <div id="sheetTableWrapper" class="sheet-table-wrapper">
+          <table id="sheetTable" class="sheet-table"></table>
+        </div>
+
+        <p id="sheetViewerStatus" class="subtitle" style="margin-top: 10px;"></p>
+
+        <a href="#" class="sheet-open-link" onclick="openGoogleSheet(); return false;">Open in Google Sheets ↗</a>
+      </div>
+    </div>
+
+    <!-- STUDENT MODAL -->
+    <div id="studentModal" class="modal-overlay">
+      <div class="modal">
+        <img id="studentPhoto" class="student-photo" src="https://via.placeholder.com/90" alt="Student">
+        <h2 id="studentName">Student Name</h2>
+
+        <p id="statusNotice" class="status-notice"></p>
+
+        <p id="studentFirstName" class="detail"><strong>First Name:</strong> —</p>
+        <p id="studentLastName" class="detail"><strong>Last Name:</strong> —</p>
+        <p id="studentBirthdate" class="detail"><strong>Birthdate:</strong> —</p>
+        <p id="studentPhone" class="detail"><strong>Phone:</strong> —</p>
+        <p id="studentEmail" class="detail"><strong>Email:</strong> —</p>
+        <p id="studentGender" class="detail"><strong>Gender:</strong> —</p>
+        <div id="qrValue" class="qr-value">QR Value</div>
+
+        <div id="actionButtons" class="action-buttons">
+          <button id="actionButton" class="login" onclick="recordAttendance()">LOG IN</button>
+        </div>
+
+        <button class="cancel-full" onclick="closeModal()">CANCEL</button>
+      </div>
     </div>
   </div>
 
@@ -329,6 +518,173 @@
     // =====================================================
     const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwKmeP0K3vnMEl43D5aUcCp6YFt5vnO5qdl0I8wsU1RkKYAsPdk2GPmaXCavZ2lrUlF/exec";
 
+    // Paste your Google Sheet's URL here (Share > Copy link, or just
+    // the address bar URL while viewing the Sheet).
+    const SHEET_URL = "https://docs.google.com/spreadsheets/d/1gIB4_3qWwQxZwbjm_FFk_uzBGG4WjgriV_JO5UKBqEE/edit?usp=sharing";
+
+    function openGoogleSheet() {
+      window.open(SHEET_URL, "_blank");
+    }
+
+    // =====================================================
+    // ATTENDANCE SHEET VIEWER
+    // Shows month sheets as tabs with a scrollable table below,
+    // reading live from the backend instead of opening Sheets.
+    // =====================================================
+    let sheetTabsList = [];
+    let currentSheetTab = null;
+ 
+    async function openAttendanceSheetViewer() {
+      if (scannerRunning) {
+        stopScanner();
+      }
+ 
+      document.getElementById("scannerView").style.display = "none";
+      document.getElementById("sheetViewerView").style.display = "block";
+      document.querySelector(".container").classList.add("wide-mode");
+ 
+      const statusEl = document.getElementById("sheetViewerStatus");
+      statusEl.textContent = "Loading sheet list...";
+      document.getElementById("sheetTabs").innerHTML = "";
+      document.getElementById("sheetTable").innerHTML = "";
+ 
+      let data;
+ 
+      try {
+        data = await callBackend({ action: "listMonthSheets" });
+      } catch (error) {
+        console.error("Failed to list sheets:", error);
+        statusEl.textContent = "Network error — could not load the sheet list.";
+        return;
+      }
+ 
+      if (!data.ok) {
+        statusEl.textContent = data.error || "Could not load the sheet list.";
+        return;
+      }
+ 
+      sheetTabsList = data.sheets || [];
+ 
+      if (sheetTabsList.length === 0) {
+        statusEl.textContent = 'No monthly attendance sheets found yet. Create one from the "QR Attendance" menu in the Sheet.';
+        return;
+      }
+ 
+      const now = new Date();
+      const currentMonthName = now.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+      const defaultTab = sheetTabsList.includes(currentMonthName)
+        ? currentMonthName
+        : sheetTabsList[sheetTabsList.length - 1];
+ 
+      loadSheetTab(defaultTab);
+    }
+ 
+    function closeSheetViewer() {
+      document.getElementById("sheetViewerView").style.display = "none";
+      document.getElementById("scannerView").style.display = "block";
+      document.querySelector(".container").classList.remove("wide-mode");
+    }
+ 
+    function renderSheetTabs() {
+      const tabsContainer = document.getElementById("sheetTabs");
+      tabsContainer.innerHTML = "";
+ 
+      sheetTabsList.forEach((name) => {
+        const tabButton = document.createElement("button");
+        tabButton.type = "button";
+        tabButton.textContent = name;
+        tabButton.className = "sheet-tab-btn" + (name === currentSheetTab ? " active" : "");
+        tabButton.onclick = () => loadSheetTab(name);
+        tabsContainer.appendChild(tabButton);
+      });
+    }
+ 
+    async function loadSheetTab(sheetName) {
+      currentSheetTab = sheetName;
+      renderSheetTabs();
+ 
+      const statusEl = document.getElementById("sheetViewerStatus");
+      statusEl.textContent = "Loading " + sheetName + "...";
+      document.getElementById("sheetTable").innerHTML = "";
+ 
+      let data;
+ 
+      try {
+        data = await callBackend({ action: "getMonthSheetData", sheetName: sheetName });
+      } catch (error) {
+        console.error("Failed to load sheet data:", error);
+        statusEl.textContent = "Network error — could not load this sheet.";
+        return;
+      }
+ 
+      if (!data.ok) {
+        statusEl.textContent = data.error || "Could not load this sheet.";
+        return;
+      }
+ 
+      renderSheetTable(data);
+      statusEl.textContent = "";
+    }
+ 
+    function renderSheetTable(data) {
+      const table = document.getElementById("sheetTable");
+      table.innerHTML = "";
+ 
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+ 
+      const headerRow = document.createElement("tr");
+      const nameHeaderCell = document.createElement("th");
+      nameHeaderCell.textContent = "Name";
+      nameHeaderCell.className = "sheet-name-cell";
+      headerRow.appendChild(nameHeaderCell);
+ 
+      data.dates.forEach((dateInfo) => {
+        const th = document.createElement("th");
+        th.textContent = dateInfo.label;
+        headerRow.appendChild(th);
+      });
+ 
+      table.appendChild(headerRow);
+ 
+      if (data.students.length === 0) {
+        const emptyRow = document.createElement("tr");
+        const emptyCell = document.createElement("td");
+        emptyCell.textContent = "No students listed in this sheet yet.";
+        emptyCell.colSpan = data.dates.length + 1;
+        emptyRow.appendChild(emptyCell);
+        table.appendChild(emptyRow);
+        return;
+      }
+ 
+      data.students.forEach((student) => {
+        const row = document.createElement("tr");
+ 
+        const nameCell = document.createElement("td");
+        nameCell.textContent = student.name;
+        nameCell.className = "sheet-name-cell";
+        row.appendChild(nameCell);
+ 
+        student.cells.forEach((cellText, i) => {
+          const td = document.createElement("td");
+          td.style.whiteSpace = "pre-line";
+          td.textContent = cellText;
+ 
+          const dateInfo = data.dates[i];
+          if (!cellText && dateInfo && dateInfo.isoDate) {
+            const cellDate = new Date(dateInfo.isoDate + "T00:00:00");
+            if (cellDate < today) {
+              td.classList.add("sheet-absent-cell");
+            }
+          }
+ 
+          row.appendChild(td);
+        });
+ 
+        table.appendChild(row);
+      });
+    }
+ 
     // Sends a POST request to the backend. Uses text/plain as
     // the content type (instead of application/json) so the
     // browser treats it as a "simple request" and skips the
@@ -339,13 +695,164 @@
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify(payload)
       });
-
+ 
       if (!response.ok) {
         throw new Error("Server responded with " + response.status);
       }
-
+ 
       return response.json();
     }
+
+    // =====================================================
+    // LOGIN / SESSION
+    // A session lasts 5 minutes of inactivity. While the tab
+    // stays open and active, a heartbeat keeps sliding the
+    // expiry forward. The moment the tab is closed or hidden,
+    // the expiry is frozen at "now + 5 minutes" — so returning
+    // within 5 minutes stays logged in, longer than that
+    // requires logging in again.
+    // =====================================================
+    const SESSION_KEY = "qrAttendanceSession";
+    const SESSION_DURATION_MS = 5 * 60 * 1000;
+    let heartbeatInterval = null;
+
+    function getSession() {
+      try {
+        const raw = localStorage.getItem(SESSION_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function saveSession(session) {
+      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    }
+
+    function clearSession() {
+      localStorage.removeItem(SESSION_KEY);
+    }
+
+    function isSessionValid(session) {
+      return !!(session && session.expiresAt && Date.now() < session.expiresAt);
+    }
+
+    function refreshSession() {
+      const session = getSession();
+      if (!session) return;
+      session.expiresAt = Date.now() + SESSION_DURATION_MS;
+      saveSession(session);
+    }
+
+    function startHeartbeat() {
+      stopHeartbeat();
+      heartbeatInterval = setInterval(refreshSession, 30000);
+    }
+
+    function stopHeartbeat() {
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+      }
+    }
+
+    function showApp() {
+      document.getElementById("loginModal").classList.remove("show");
+      document.getElementById("appContent").style.display = "block";
+      startHeartbeat();
+    }
+
+    function showLogin() {
+      stopHeartbeat();
+      document.getElementById("appContent").style.display = "none";
+      document.getElementById("loginModal").classList.add("show");
+      document.getElementById("loginPassword").value = "";
+      document.getElementById("loginError").style.display = "none";
+    }
+
+    async function attemptLogin() {
+      const username = document.getElementById("loginUsername").value.trim();
+      const password = document.getElementById("loginPassword").value;
+      const errorEl = document.getElementById("loginError");
+      const button = document.getElementById("loginSubmitButton");
+
+      errorEl.style.display = "none";
+      button.disabled = true;
+      button.textContent = "Signing in...";
+
+      let data;
+
+      try {
+        data = await callBackend({ action: "login", username: username, password: password });
+      } catch (error) {
+        console.error("Login failed:", error);
+        errorEl.textContent = "Network error — please try again.";
+        errorEl.style.display = "block";
+        button.disabled = false;
+        button.textContent = "LOG IN";
+        return;
+      }
+
+      button.disabled = false;
+      button.textContent = "LOG IN";
+
+      if (!data.ok) {
+        errorEl.textContent = data.error || "Invalid username or password.";
+        errorEl.style.display = "block";
+        return;
+      }
+
+      saveSession({ token: data.token, expiresAt: Date.now() + SESSION_DURATION_MS });
+      showApp();
+    }
+
+    function logout() {
+      clearSession();
+      showLogin();
+    }
+
+    function checkSessionOnLoad() {
+      const session = getSession();
+      if (isSessionValid(session)) {
+        showApp();
+      } else {
+        clearSession();
+        showLogin();
+      }
+    }
+
+    // Freeze the 5-minute countdown the moment the tab is closed or
+    // switched away from, so it starts counting from when the user
+    // actually left rather than from login time.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") {
+        refreshSession();
+      }
+    });
+    window.addEventListener("beforeunload", () => {
+      refreshSession();
+    });
+
+    checkSessionOnLoad();
+
+    // =====================================================
+    // LIVE DATE / TIME HEADER
+    // =====================================================
+    function updateLiveDateTime() {
+      const now = new Date();
+      const dateStr = now.toLocaleDateString(undefined, {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric"
+      });
+      const timeStr = now.toLocaleTimeString();
+
+      document.getElementById("liveDateTime").textContent = dateStr + " · " + timeStr;
+    }
+
+    updateLiveDateTime();
+    setInterval(updateLiveDateTime, 1000);
 
     // =====================================================
     // STATE
@@ -490,7 +997,7 @@
 
         await scanner.start(
           { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 250, height: 250 } },
+          { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0 },
           onScanSuccess,
           onScanFailure
         );
@@ -499,6 +1006,7 @@
         startButton.style.display = "none";
         document.getElementById("stopButton").style.display = "block";
         document.getElementById("modeToggle").style.display = "flex";
+        document.getElementById("reader").style.display = "block";
 
         setMode(currentMode);
       } catch (error) {
@@ -529,6 +1037,7 @@
       startButton.style.display = "block";
       startButton.disabled = false;
       document.getElementById("modeToggle").style.display = "none";
+      document.getElementById("reader").style.display = "none";
 
       setStatus("Camera stopped. Tap \"Start Camera\" to resume.");
     }
@@ -539,6 +1048,7 @@
     function handleCameraError(error, startButton) {
       console.error("Raw camera error:", error);
       startButton.disabled = false;
+      document.getElementById("reader").style.display = "none";
 
       const errorName = (error && error.name) || (typeof error === "string" ? error : "") || "";
       const errorMessage =
@@ -694,7 +1204,7 @@
 
       playErrorBeep();
 
-      document.getElementById("studentPhoto").src = "https://via.placeholder.com/90";
+      document.getElementById("studentPhoto").src = "https://via.placeholder.com/80";
       document.getElementById("studentName").textContent = "Unknown QR Code";
       document.getElementById("studentFirstName").innerHTML = "<strong>First Name:</strong> —";
       document.getElementById("studentLastName").innerHTML = "<strong>Last Name:</strong> —";
