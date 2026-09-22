@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>QR Attendance</title>
 
+  <!-- PWA: installable app + offline support (added — see notes) -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1a73e8">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
   <!-- QR SCANNER LIBRARY -->
   <script src="https://unpkg.com/html5-qrcode"></script>
 
@@ -443,6 +450,10 @@
       <h1>QR Attendance</h1>
       <p id="liveDateTime"></p>
 
+      <!-- Offline mode indicator (added). Inline-styled on purpose —
+           see the notes at the end of the reply. Hidden by default. -->
+      <p id="offlineIndicator" style="display: none; text-align: center; font-size: 12px; font-weight: bold; padding: 7px 10px; border-radius: 8px; margin: 0 0 12px;"></p>
+
       <div id="scannerView">
         <p class="subtitle">Scan student's QR code</p>
 
@@ -510,6 +521,16 @@
   </div>
 
   <script>
+    // =====================================================
+    // PWA: register the service worker (added — offline
+    // caching + installable app support)
+    // =====================================================
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("sw.js").catch((error) => {
+        console.error("Service worker registration failed:", error);
+      });
+    }
+
     // =====================================================
     // BACKEND CONFIG
     // Paste your deployed Apps Script Web App URL here
@@ -760,6 +781,7 @@
       document.getElementById("loginModal").classList.remove("show");
       document.getElementById("appContent").style.display = "block";
       startHeartbeat();
+      downloadFullRosterForOffline();
     }
 
     function showLogin() {
@@ -853,6 +875,173 @@
 
     updateLiveDateTime();
     setInterval(updateLiveDateTime, 1000);
+
+    // =====================================================
+    // OFFLINE MODE (added)
+    // Two parts: (1) a local cache of every student looked up
+    // while online, so a scan can still show their info with no
+    // signal; (2) a queue of Log In/Out actions that failed to
+    // reach the server, retried automatically once back online.
+    // =====================================================
+    const OFFLINE_ROSTER_KEY = "qrAttendanceOfflineRoster";
+    const OFFLINE_QUEUE_KEY = "qrAttendanceOfflineQueue";
+
+    function getOfflineRoster() {
+      try {
+        return JSON.parse(localStorage.getItem(OFFLINE_ROSTER_KEY) || "{}");
+      } catch (error) {
+        return {};
+      }
+    }
+
+    function cacheStudentOffline(qrValue, student) {
+      const roster = getOfflineRoster();
+      roster[qrValue] = student;
+      try {
+        localStorage.setItem(OFFLINE_ROSTER_KEY, JSON.stringify(roster));
+      } catch (error) {
+        console.error("Could not cache roster offline:", error);
+      }
+    }
+
+    // Downloads the ENTIRE student roster while online, so any
+    // student can be recognized offline — not just ones already
+    // scanned individually. Called after login and periodically
+    // while online, so it stays reasonably fresh.
+    async function downloadFullRosterForOffline() {
+      if (!navigator.onLine) return;
+
+      try {
+        const data = await callBackend({ action: "getAllStudents" });
+        if (data.ok && data.students) {
+          localStorage.setItem(OFFLINE_ROSTER_KEY, JSON.stringify(data.students));
+          console.log("Offline roster updated:", Object.keys(data.students).length, "students");
+        }
+      } catch (error) {
+        console.error("Could not download full roster for offline use:", error);
+      }
+    }
+
+    function getOfflineQueue() {
+      try {
+        return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || "[]");
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function saveOfflineQueue(queue) {
+      localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+      updateOfflineIndicator();
+    }
+
+    function queueOfflineAction(qrValue, action, studentName) {
+      const queue = getOfflineQueue();
+      queue.push({
+        qrValue: qrValue,
+        action: action,
+        studentName: studentName,
+        timestamp: Date.now()
+      });
+      saveOfflineQueue(queue);
+    }
+
+    async function syncOfflineQueue() {
+      if (!navigator.onLine) return;
+
+      let queue = getOfflineQueue();
+      if (queue.length === 0) return;
+
+      updateOfflineIndicator();
+
+      while (queue.length > 0) {
+        const item = queue[0];
+
+        try {
+          const data = await callBackend({ action: item.action, qrValue: item.qrValue });
+          if (!data.ok) {
+            console.error("Server rejected queued record, dropping it:", item, data.error);
+          }
+        } catch (error) {
+          console.error("Sync failed, will retry later:", error);
+          break; // still offline/unreachable — stop and try again later
+        }
+
+        queue.shift();
+        saveOfflineQueue(queue);
+      }
+    }
+
+    function updateOfflineIndicator() {
+      const el = document.getElementById("offlineIndicator");
+      if (!el) return;
+
+      const queue = getOfflineQueue();
+
+      if (!navigator.onLine) {
+        el.style.display = "block";
+        el.style.background = "#fff3f3";
+        el.style.color = "#d32f2f";
+        el.textContent = "⚠ Offline" + (queue.length ? " — " + queue.length + " pending record(s)" : "");
+      } else if (queue.length > 0) {
+        el.style.display = "block";
+        el.style.background = "#eef2f7";
+        el.style.color = "#1a73e8";
+        el.textContent = "Syncing " + queue.length + " pending record(s)...";
+      } else {
+        el.style.display = "none";
+      }
+    }
+
+    window.addEventListener("online", () => {
+      updateOfflineIndicator();
+      syncOfflineQueue();
+      downloadFullRosterForOffline();
+    });
+    window.addEventListener("offline", updateOfflineIndicator);
+
+    // Safety net in case the browser's online/offline events don't
+    // fire reliably (common on flaky mobile data).
+    setInterval(syncOfflineQueue, 30000);
+
+    // Refresh the full offline roster every 10 minutes while online,
+    // so newly added students get picked up without needing to log
+    // out and back in.
+    setInterval(downloadFullRosterForOffline, 10 * 60 * 1000);
+
+    updateOfflineIndicator();
+    syncOfflineQueue();
+
+    function showOfflineStudent(student, qrValue) {
+      currentStudent = student;
+      currentQrValue = qrValue;
+
+      playSuccessBeep();
+
+      document.getElementById("studentPhoto").src = student.photo || "https://via.placeholder.com/90";
+      document.getElementById("studentName").textContent = student.firstName + " " + student.lastName;
+      document.getElementById("studentFirstName").innerHTML = "<strong>First Name:</strong> " + student.firstName;
+      document.getElementById("studentLastName").innerHTML = "<strong>Last Name:</strong> " + student.lastName;
+      document.getElementById("studentBirthdate").innerHTML = "<strong>Birthdate:</strong> " + student.birthdate;
+      document.getElementById("studentPhone").innerHTML = "<strong>Phone:</strong> " + student.phone;
+      document.getElementById("studentEmail").innerHTML = "<strong>Email:</strong> " + student.email;
+      document.getElementById("studentGender").innerHTML = "<strong>Gender:</strong> " + student.gender;
+      document.getElementById("qrValue").textContent = "QR: " + qrValue;
+
+      const notice = document.getElementById("statusNotice");
+      notice.textContent = "⚠ Offline — showing cached info. Today's in/out status can't be checked until this syncs.";
+      notice.style.display = "block";
+
+      const button = document.getElementById("actionButton");
+      button.textContent = currentMode === "in" ? "LOG IN" : "LOG OUT";
+      button.className = currentMode === "in" ? "login" : "logout";
+      button.disabled = false; // duplicate status can't be verified offline — allow it, server resolves conflicts on sync
+
+      document.getElementById("actionButtons").style.display = "flex";
+      document.getElementById("studentModal").classList.add("show");
+
+      setStatus("Student identified (offline)");
+    }
 
     // =====================================================
     // STATE
@@ -997,7 +1186,15 @@
 
         await scanner.start(
           { facingMode: "environment" },
-          { fps: 10, qrbox: { width: 220, height: 220 }, aspectRatio: 1.0 },
+          {
+            fps: 15,
+            qrbox: { width: 220, height: 220 },
+            aspectRatio: 1.0,
+            disableFlip: true, // back camera never needs mirrored detection — skip it for speed
+            experimentalFeatures: {
+              useBarCodeDetectorIfSupported: true // native browser decoder when available — much faster than the JS fallback
+            }
+          },
           onScanSuccess,
           onScanFailure
         );
@@ -1121,6 +1318,15 @@
         data = await callBackend({ action: "lookup", qrValue: qrValue });
       } catch (error) {
         console.error("Lookup failed:", error);
+
+        // Offline (or server unreachable) — fall back to cached info
+        // from the last time this student was successfully looked up.
+        const roster = getOfflineRoster();
+        if (roster[qrValue]) {
+          showOfflineStudent(roster[qrValue], qrValue);
+          return;
+        }
+
         showToast("Network error — could not reach the server.");
         setStatus("Network error. Scan again to retry.", true);
         resumeScanningAfterError();
@@ -1141,6 +1347,8 @@
 
       currentStudent = data.student;
       currentQrValue = qrValue;
+
+      cacheStudentOffline(qrValue, data.student);
 
       const record = { timeIn: data.timeIn, timeOut: data.timeOut };
       const actionAvailable = currentMode === "in" ? !record.timeIn : record.timeIn && !record.timeOut;
@@ -1258,15 +1466,22 @@
       button.disabled = true;
 
       const action = currentMode === "in" ? "timeIn" : "timeOut";
+      const studentFullName = currentStudent.firstName + " " + currentStudent.lastName;
 
       let data;
 
       try {
         data = await callBackend({ action: action, qrValue: currentQrValue });
       } catch (error) {
-        console.error("Record attendance failed:", error);
-        showToast("Network error — please try again.");
-        button.disabled = false;
+        console.error("Record attendance failed, queueing for later sync:", error);
+
+        queueOfflineAction(currentQrValue, action, studentFullName);
+
+        showToast(
+          (currentMode === "in" ? "Logged IN (offline): " : "Logged OUT (offline): ") + studentFullName
+        );
+
+        closeModal();
         return;
       }
 
@@ -1275,8 +1490,6 @@
         button.disabled = false;
         return;
       }
-
-      const studentFullName = currentStudent.firstName + " " + currentStudent.lastName;
 
       showToast(
         currentMode === "in"
