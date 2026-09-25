@@ -1,13 +1,19 @@
 {
-  "id": "qr-attendance",
+  "id": "qr-attendance-app",
   "name": "QR Attendance",
   "short_name": "QR Attend",
+  "description": "Student QR Attendance System",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#f4f6f8",
   "theme_color": "#1a73e8",
+  "lang": "en",
+  "categories": [
+    "education",
+    "productivity"
+  ],
   "icons": [
     {
       "src": "icon-192.png",

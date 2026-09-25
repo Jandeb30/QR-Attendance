@@ -458,9 +458,11 @@
         <p class="subtitle">Scan student's QR code</p>
 
         <button class="dashboard-button" onclick="openAttendanceSheetViewer()">Open Attendance Sheet</button>
+        <button class="dashboard-button" onclick="openReportModal()" style="background: #2e7d32;">📧 Send Report to Teacher</button>
 
         <button id="startButton" onclick="startScanner()">Start Camera</button>
         <button id="stopButton" onclick="stopScanner()" style="display: none;">Stop Scanning</button>
+        <button id="torchButton" onclick="toggleTorch()" style="display: none; background: #ff9800; color: white; width: 100%; border: none; border-radius: 12px; padding: 14px; font-size: 15px; font-weight: bold; cursor: pointer; margin-bottom: 15px;">🔦 Flashlight: OFF</button>
 
         <div id="modeToggle" class="mode-toggle">
           <button id="modeInButton" class="mode-btn active" onclick="setMode('in')">LOG IN MODE</button>
@@ -516,6 +518,21 @@
         </div>
 
         <button class="cancel-full" onclick="closeModal()">CANCEL</button>
+      </div>
+    </div>
+
+    <!-- REPORT MODAL -->
+    <div id="reportModal" class="modal-overlay">
+      <div class="modal">
+        <h2>📧 Daily Attendance Report</h2>
+        <p class="subtitle" style="margin-bottom: 20px;">Send today's attendance summary to teacher</p>
+
+        <div id="reportContent" style="text-align: left; background: #f9f9f9; padding: 15px; border-radius: 10px; margin-bottom: 20px; font-size: 14px; line-height: 1.6;">
+          <p id="reportLoading" style="text-align: center; color: #666;">Loading report...</p>
+        </div>
+
+        <button id="sendReportButton" class="login" style="width: 100%; margin-bottom: 10px;" onclick="sendReport()">Send to Teacher</button>
+        <button class="cancel-full" onclick="closeReportModal()">CANCEL</button>
       </div>
     </div>
   </div>
@@ -1202,6 +1219,7 @@
         scannerRunning = true;
         startButton.style.display = "none";
         document.getElementById("stopButton").style.display = "block";
+        document.getElementById("torchButton").style.display = "block";
         document.getElementById("modeToggle").style.display = "flex";
         document.getElementById("reader").style.display = "block";
 
@@ -1219,6 +1237,12 @@
 
       const startButton = document.getElementById("startButton");
       const stopButton = document.getElementById("stopButton");
+      const torchButton = document.getElementById("torchButton");
+
+      // Turn off flashlight if active before stopping camera
+      if (torchActive) {
+        await toggleTorch();
+      }
 
       try {
         await scanner.stop();
@@ -1231,12 +1255,61 @@
       scannerLocked = false;
 
       stopButton.style.display = "none";
+      torchButton.style.display = "none";
       startButton.style.display = "block";
       startButton.disabled = false;
       document.getElementById("modeToggle").style.display = "none";
       document.getElementById("reader").style.display = "none";
 
       setStatus("Camera stopped. Tap \"Start Camera\" to resume.");
+    }
+
+    // =====================================================
+    // FLASHLIGHT / TORCH
+    // =====================================================
+    let torchActive = false;
+
+    function getCameraVideoTrack() {
+      const videoEl = document.querySelector("#reader video");
+      if (videoEl && videoEl.srcObject) {
+        const tracks = videoEl.srcObject.getVideoTracks();
+        if (tracks && tracks.length > 0) {
+          return tracks[0];
+        }
+      }
+      return null;
+    }
+
+    async function toggleTorch() {
+      const torchButton = document.getElementById("torchButton");
+      const track = getCameraVideoTrack();
+
+      if (!track) {
+        showToast("Camera is not active.");
+        return;
+      }
+
+      const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+      if (!capabilities.torch) {
+        showToast("Flashlight is not supported on this device/camera.");
+        return;
+      }
+
+      try {
+        torchActive = !torchActive;
+        await track.applyConstraints({
+          advanced: [{ torch: torchActive }]
+        });
+
+        torchButton.textContent = torchActive ? "🔦 Flashlight: ON" : "🔦 Flashlight: OFF";
+        torchButton.style.background = torchActive ? "#e65100" : "#ff9800";
+      } catch (error) {
+        console.error("Torch error:", error);
+        torchActive = false;
+        torchButton.textContent = "🔦 Flashlight: OFF";
+        torchButton.style.background = "#ff9800";
+        showToast("Could not toggle flashlight.");
+      }
     }
 
     // =====================================================
@@ -1308,74 +1381,137 @@
 
     // =====================================================
     // PROCESS QR — looks the student up on the backend
+    // OPTIMIZED: Check local cache first for instant display,
+    // then fetch live status asynchronously in the background
     // =====================================================
     async function processQRCode(qrValue) {
       setStatus("Looking up student...");
 
-      let data;
+      // STEP 1: Check local cache first for instant display
+      const roster = getOfflineRoster();
+      const cachedStudent = roster[qrValue];
 
-      try {
-        data = await callBackend({ action: "lookup", qrValue: qrValue });
-      } catch (error) {
-        console.error("Lookup failed:", error);
+      if (cachedStudent) {
+        // Show student info immediately from cache
+        currentStudent = cachedStudent;
+        currentQrValue = qrValue;
 
-        // Offline (or server unreachable) — fall back to cached info
-        // from the last time this student was successfully looked up.
-        const roster = getOfflineRoster();
-        if (roster[qrValue]) {
-          showOfflineStudent(roster[qrValue], qrValue);
+        playSuccessBeep();
+
+        document.getElementById("studentPhoto").src = cachedStudent.photo || "https://via.placeholder.com/90";
+        document.getElementById("studentName").textContent = cachedStudent.firstName + " " + cachedStudent.lastName;
+        document.getElementById("studentFirstName").innerHTML = "<strong>First Name:</strong> " + cachedStudent.firstName;
+        document.getElementById("studentLastName").innerHTML = "<strong>Last Name:</strong> " + cachedStudent.lastName;
+        document.getElementById("studentBirthdate").innerHTML = "<strong>Birthdate:</strong> " + cachedStudent.birthdate;
+        document.getElementById("studentPhone").innerHTML = "<strong>Phone:</strong> " + cachedStudent.phone;
+        document.getElementById("studentEmail").innerHTML = "<strong>Email:</strong> " + cachedStudent.email;
+        document.getElementById("studentGender").innerHTML = "<strong>Gender:</strong> " + cachedStudent.gender;
+        document.getElementById("qrValue").textContent = "QR: " + qrValue;
+
+        const notice = document.getElementById("statusNotice");
+        notice.textContent = "Checking today's status...";
+        notice.style.display = "block";
+
+        document.getElementById("actionButtons").style.display = "flex";
+        const button = document.getElementById("actionButton");
+        button.textContent = currentMode === "in" ? "LOG IN" : "LOG OUT";
+        button.className = currentMode === "in" ? "login" : "logout";
+        button.disabled = true; // Disable until we get live status
+
+        document.getElementById("studentModal").classList.add("show");
+        setStatus("Student identified");
+
+        // STEP 2: Fetch live status in background (non-blocking)
+        if (navigator.onLine) {
+          try {
+            const data = await callBackend({ action: "lookup", qrValue: qrValue });
+
+            if (data.ok && data.found) {
+              // Update with live status
+              const record = { timeIn: data.timeIn, timeOut: data.timeOut };
+              const actionAvailable = currentMode === "in" ? !record.timeIn : record.timeIn && !record.timeOut;
+
+              if (!actionAvailable) {
+                playDuplicateBeep();
+              }
+
+              updateStatusNotice(record);
+              updateActionButton(record);
+
+              // Update cache with any new info from server
+              if (data.student) {
+                cacheStudentOffline(qrValue, data.student);
+              }
+            }
+          } catch (error) {
+            console.error("Background status fetch failed:", error);
+            // Keep showing cached info, mark as offline
+            notice.textContent = "⚠ Offline — showing cached info. Today's in/out status can't be checked until this syncs.";
+            button.disabled = false; // Allow recording offline
+          }
+        } else {
+          // Offline mode
+          notice.textContent = "⚠ Offline — showing cached info. Today's in/out status can't be checked until this syncs.";
+          button.disabled = false; // Allow recording offline
+        }
+      } else {
+        // Student not in cache — must fetch from backend
+        let data;
+
+        try {
+          data = await callBackend({ action: "lookup", qrValue: qrValue });
+        } catch (error) {
+          console.error("Lookup failed:", error);
+          showToast("Network error — could not reach the server.");
+          setStatus("Network error. Scan again to retry.", true);
+          resumeScanningAfterError();
           return;
         }
 
-        showToast("Network error — could not reach the server.");
-        setStatus("Network error. Scan again to retry.", true);
-        resumeScanningAfterError();
-        return;
+        if (!data.ok) {
+          showToast(data.error || "Something went wrong.");
+          setStatus(data.error || "Something went wrong.", true);
+          resumeScanningAfterError();
+          return;
+        }
+
+        if (!data.found) {
+          showUnknownStudent(qrValue);
+          return;
+        }
+
+        currentStudent = data.student;
+        currentQrValue = qrValue;
+
+        cacheStudentOffline(qrValue, data.student);
+
+        const record = { timeIn: data.timeIn, timeOut: data.timeOut };
+        const actionAvailable = currentMode === "in" ? !record.timeIn : record.timeIn && !record.timeOut;
+
+        if (actionAvailable) {
+          playSuccessBeep();
+        } else {
+          playDuplicateBeep();
+        }
+
+        document.getElementById("studentPhoto").src = currentStudent.photo || "https://via.placeholder.com/90";
+        document.getElementById("studentName").textContent = currentStudent.firstName + " " + currentStudent.lastName;
+        document.getElementById("studentFirstName").innerHTML = "<strong>First Name:</strong> " + currentStudent.firstName;
+        document.getElementById("studentLastName").innerHTML = "<strong>Last Name:</strong> " + currentStudent.lastName;
+        document.getElementById("studentBirthdate").innerHTML = "<strong>Birthdate:</strong> " + currentStudent.birthdate;
+        document.getElementById("studentPhone").innerHTML = "<strong>Phone:</strong> " + currentStudent.phone;
+        document.getElementById("studentEmail").innerHTML = "<strong>Email:</strong> " + currentStudent.email;
+        document.getElementById("studentGender").innerHTML = "<strong>Gender:</strong> " + currentStudent.gender;
+        document.getElementById("qrValue").textContent = "QR: " + qrValue;
+
+        document.getElementById("actionButtons").style.display = "flex";
+        updateStatusNotice(record);
+        updateActionButton(record);
+
+        document.getElementById("studentModal").classList.add("show");
+
+        setStatus("Student identified");
       }
-
-      if (!data.ok) {
-        showToast(data.error || "Something went wrong.");
-        setStatus(data.error || "Something went wrong.", true);
-        resumeScanningAfterError();
-        return;
-      }
-
-      if (!data.found) {
-        showUnknownStudent(qrValue);
-        return;
-      }
-
-      currentStudent = data.student;
-      currentQrValue = qrValue;
-
-      cacheStudentOffline(qrValue, data.student);
-
-      const record = { timeIn: data.timeIn, timeOut: data.timeOut };
-      const actionAvailable = currentMode === "in" ? !record.timeIn : record.timeIn && !record.timeOut;
-
-      if (actionAvailable) {
-        playSuccessBeep();
-      } else {
-        playDuplicateBeep();
-      }
-
-      document.getElementById("studentPhoto").src = currentStudent.photo || "https://via.placeholder.com/90";
-      document.getElementById("studentName").textContent = currentStudent.firstName + " " + currentStudent.lastName;
-      document.getElementById("studentFirstName").innerHTML = "<strong>First Name:</strong> " + currentStudent.firstName;
-      document.getElementById("studentLastName").innerHTML = "<strong>Last Name:</strong> " + currentStudent.lastName;
-      document.getElementById("studentBirthdate").innerHTML = "<strong>Birthdate:</strong> " + currentStudent.birthdate;
-      document.getElementById("studentPhone").innerHTML = "<strong>Phone:</strong> " + currentStudent.phone;
-      document.getElementById("studentEmail").innerHTML = "<strong>Email:</strong> " + currentStudent.email;
-      document.getElementById("studentGender").innerHTML = "<strong>Gender:</strong> " + currentStudent.gender;
-      document.getElementById("qrValue").textContent = "QR: " + qrValue;
-
-      document.getElementById("actionButtons").style.display = "flex";
-      updateStatusNotice(record);
-      updateActionButton(record);
-
-      document.getElementById("studentModal").classList.add("show");
-
-      setStatus("Student identified");
     }
 
     function updateStatusNotice(record) {
@@ -1498,6 +1634,107 @@
       );
 
       closeModal();
+    }
+
+    // =====================================================
+    // SEND REPORT TO TEACHER
+    // =====================================================
+    const TEACHER_EMAIL = "jandebbnz@gmail.com";
+
+    async function openReportModal() {
+      if (scannerRunning) {
+        stopScanner();
+      }
+
+      document.getElementById("reportModal").classList.add("show");
+      document.getElementById("reportLoading").style.display = "block";
+      document.getElementById("reportContent").style.display = "block";
+      document.getElementById("sendReportButton").disabled = true;
+
+      try {
+        const data = await callBackend({ action: "getDailyReport" });
+
+        if (!data.ok) {
+          document.getElementById("reportLoading").innerHTML =
+            '<p style="color: #d32f2f;">Error: ' + (data.error || "Could not load today's attendance data.") + '</p>';
+          return;
+        }
+
+        const report = data.report;
+        const now = new Date();
+        const dateStr = now.toLocaleDateString(undefined, {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric"
+        });
+        const timeStr = now.toLocaleTimeString();
+
+        let html = '<p style="margin: 0 0 10px;"><strong>Date:</strong> ' + dateStr + '</p>';
+        html += '<p style="margin: 0 0 10px;"><strong>Generated:</strong> ' + timeStr + '</p>';
+        html += '<p style="margin: 0 0 10px;"><strong>Total Students:</strong> ' + report.totalStudents + '</p>';
+        html += '<p style="margin: 0 0 10px; color: #2e7d32;"><strong>✓ Completed (In & Out):</strong> ' + report.completedCount + '</p>';
+        html += '<p style="margin: 0 0 10px; color: #ff9800;"><strong>⏳ Currently In:</strong> ' + report.currentlyInCount + '</p>';
+        html += '<p style="margin: 0 0 10px; color: #d32f2f;"><strong>✗ Absent:</strong> ' + report.absentCount + '</p>';
+
+        if (report.completedStudents && report.completedStudents.length > 0) {
+          html += '<p style="margin: 15px 0 5px; font-weight: bold; font-size: 13px;">Completed Students:</p>';
+          html += '<p style="margin: 0; font-size: 12px; color: #555;">' + report.completedStudents.join(", ") + '</p>';
+        }
+
+        if (report.currentlyInStudents && report.currentlyInStudents.length > 0) {
+          html += '<p style="margin: 15px 0 5px; font-weight: bold; font-size: 13px;">Currently In:</p>';
+          html += '<p style="margin: 0; font-size: 12px; color: #555;">' + report.currentlyInStudents.join(", ") + '</p>';
+        }
+
+        if (report.absentStudents && report.absentStudents.length > 0) {
+          html += '<p style="margin: 15px 0 5px; font-weight: bold; font-size: 13px;">Absent:</p>';
+          html += '<p style="margin: 0; font-size: 12px; color: #555;">' + report.absentStudents.join(", ") + '</p>';
+        }
+
+        document.getElementById("reportLoading").style.display = "none";
+        document.getElementById("reportContent").innerHTML = html;
+        document.getElementById("sendReportButton").disabled = false;
+
+      } catch (error) {
+        console.error("Failed to load report:", error);
+        document.getElementById("reportLoading").innerHTML =
+          '<p style="color: #d32f2f;">Network error — could not reach the server.</p>';
+      }
+    }
+
+    function closeReportModal() {
+      document.getElementById("reportModal").classList.remove("show");
+    }
+
+    async function sendReport() {
+      const button = document.getElementById("sendReportButton");
+      button.disabled = true;
+      button.textContent = "Sending...";
+
+      try {
+        const data = await callBackend({
+          action: "sendDailyReport",
+          recipientEmail: TEACHER_EMAIL
+        });
+
+        if (!data.ok) {
+          showToast(data.error || "Failed to send report.");
+          button.disabled = false;
+          button.textContent = "Send to Teacher";
+          return;
+        }
+
+        showToast("Report sent successfully to " + TEACHER_EMAIL);
+        closeReportModal();
+        button.textContent = "Send to Teacher";
+
+      } catch (error) {
+        console.error("Send report failed:", error);
+        showToast("Network error — could not send report.");
+        button.disabled = false;
+        button.textContent = "Send to Teacher";
+      }
     }
   </script>
 
