@@ -8,7 +8,7 @@
 const CACHE_NAME = "qr-attendance-v1";
 
 const APP_SHELL = [
-  "./qr-attendance-clean.html",
+  "./index.html",
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",
